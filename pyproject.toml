@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nedb-cast-slm"
-version = "0.1.0"
+version = "10.30.90"
 description = "A 3.3M-parameter small language model that casts short prompts into NEDB query plans, with causal provenance in the engine itself."
 readme = "README.md"
 requires-python = ">=3.9"

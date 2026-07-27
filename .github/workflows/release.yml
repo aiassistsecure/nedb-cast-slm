@@ -1,0 +1,159 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (e.g. v10.30.90)'
+        required: true
+
+# The weights are RELEASE ASSETS, never git history. ckpt.pt is ~40MB and
+# model.cast ~13MB; committing them would bloat every future clone forever and
+# be irreversible without a history rewrite. Attaching them to the release gives
+# the same permanence and the same github.com URL, without that cost.
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------- gate
+  # Nothing publishes unless parity passes. A registry push is immutable, so the
+  # proof has to come first.
+  verify:
+    name: Verify (tests + Rust parity)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy pytest
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install nedb-engine
+          pip install -e .
+
+      - name: Python tests
+        run: pytest tests/ -q
+
+      - name: Build corpus + train briefly (parity needs real weights)
+        run: |
+          python -m cast.cli generate --train 4000 --eval 200 --holdout 200
+          python -m cast.cli tokenizer
+          python -m cast.cli train --steps 120 --eval-every 60 --ckpt-every 60 --warmup 20
+
+      - name: Export model.cast + fixtures from ONE torch.load
+        run: |
+          python scripts/dump_parity_fixtures.py \
+            --ckpt runs/v1/ckpt.pt --tokenizer data/tokenizer.json \
+            --model-out rust/nedb-cast-core/tests/model.cast \
+            --fixtures-out rust/nedb-cast-core/tests/fixtures.json
+
+      - name: Rust parity — logits within 1e-4, decoded strings exact
+        working-directory: rust/nedb-cast-core
+        env:
+          CAST_REQUIRE_PARITY: '1'
+        run: cargo test --release -- --nocapture
+
+  # ---------------------------------------------------------------- PyPI
+  pypi:
+    name: Publish to PyPI
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build sdist + wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+      - name: Publish
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          if [ -z "$TWINE_PASSWORD" ]; then
+            echo "::warning::PYPI_API_TOKEN not set — skipping PyPI publish"
+            exit 0
+          fi
+          pip install twine
+          twine upload --skip-existing dist/*
+
+  # ---------------------------------------------------------------- crates.io
+  crates:
+    name: Publish to crates.io
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Publish nedb-cast-core
+        working-directory: rust/nedb-cast-core
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+            echo "::warning::CARGO_REGISTRY_TOKEN not set — doing a dry run only"
+            cargo publish --dry-run --allow-dirty
+            exit 0
+          fi
+          cargo publish --allow-dirty
+
+  # ---------------------------------------------------------------- assets
+  assets:
+    name: Attach weights to the release
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install nedb-engine
+          pip install -e .
+
+      # Reproduce the release model from the committed seed. The corpus is
+      # content-addressed, so this run's dataset id must match the one recorded
+      # in the shipped ledger — reproducibility is the whole claim.
+      - name: Reproduce the release model
+        run: |
+          python -m cast.cli generate --train 240000 --eval 4000 --holdout 3000 --seed 1337
+          python -m cast.cli tokenizer
+          python -m cast.cli train --steps 14000
+          python -m cast.cli eval --split eval    --limit 1000 | tee eval.txt
+          python -m cast.cli eval --split holdout --limit 1000 | tee holdout.txt
+          python scripts/export_weights.py \
+            --ckpt runs/v1/ckpt.pt --tokenizer data/tokenizer.json --out model.cast
+
+      - name: Package release artifacts
+        run: |
+          mkdir -p release
+          cp model.cast release/
+          cp runs/v1/ckpt.pt release/ckpt.pt
+          cp data/tokenizer.json release/
+          cp -r ledger release/ledger
+          cp eval.txt holdout.txt release/ 2>/dev/null || true
+          cd release && sha256sum model.cast ckpt.pt tokenizer.json > SHA256SUMS.txt
+          tar czf ../nedb-cast-slm-weights.tar.gz .
+
+      - name: Upload to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            nedb-cast-slm-weights.tar.gz
+            model.cast
+          fail_on_unmatched_files: false
