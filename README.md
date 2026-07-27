@@ -163,8 +163,22 @@ constrained grammar. It does not write code, and nothing at 3.3M parameters will
 
 ## Install
 
+Three registries, one model. All load the identical `model.cast` bytes, so they
+agree by construction rather than by luck.
+
 ```bash
-pip install nedb-cast-slm
+pip install "nedb-cast-slm[torch]"     # Python: inference + training
+cargo add nedb-cast-core               # Rust:   zero dependencies, no Python
+npm install @interchained/cast         # Node:   napi binding over the Rust core
+```
+
+`pip install nedb-cast-slm` without the extra gives you the CLI and the NQL parser
+with no torch needed — useful on platforms torch does not ship wheels for.
+
+Verify any install end to end:
+
+```bash
+cast smoke
 ```
 
 ## Use

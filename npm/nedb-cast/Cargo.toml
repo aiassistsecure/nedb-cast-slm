@@ -1,0 +1,22 @@
+[package]
+name = "nedb-cast-node"
+version = "10.30.92"
+edition = "2021"
+description = "Node.js bindings for nedb-cast-core — cast short prompts into NEDB query plans."
+license = "BUSL-1.1"
+publish = false   # published to npm, not crates.io
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+nedb-cast-core = { path = "../../rust/nedb-cast-core", version = "10.30.92" }
+napi = { version = "2", default-features = false, features = ["napi4"] }
+napi-derive = "2"
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+opt-level = 3
+lto = true
