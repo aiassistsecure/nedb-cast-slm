@@ -223,6 +223,37 @@ def cmd_lineage(a) -> int:
     return 0
 
 
+def cmd_smoke(a) -> int:
+    """Run the standalone smoke test against an installed package."""
+    import runpy
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(here, "smoketest.py"),
+        os.path.join(os.path.dirname(here), "scripts", "smoketest.py"),
+    ]
+    path = next((c for c in candidates if os.path.exists(c)), None)
+    if path is None:
+        print("smoketest.py not found; download it from the release or repo:")
+        print("  https://github.com/aiassistsecure/nedb-cast-slm"
+              "/blob/main/scripts/smoketest.py")
+        return 1
+    argv = ["smoketest"]
+    if a.offline:
+        argv.append("--offline")
+    if a.quick:
+        argv.append("--quick")
+    if a.verbose:
+        argv.append("--verbose")
+    if a.model_path:
+        argv += ["--model", a.model_path]
+    sys.argv = argv
+    try:
+        runpy.run_path(path, run_name="__main__")
+    except SystemExit as e:
+        return int(e.code or 0)
+    return 0
+
+
 def cmd_cast(a) -> int:
     from .inference import Cast
     c = Cast.from_pretrained(a.out)
@@ -287,6 +318,13 @@ def main(argv=None) -> int:
 
     l = sub.add_parser("lineage", help="TRACE the ledger")
     l.set_defaults(fn=cmd_lineage)
+
+    sm = sub.add_parser("smoke", help="verify this install end to end")
+    sm.add_argument("--offline", action="store_true")
+    sm.add_argument("--quick", action="store_true")
+    sm.add_argument("--verbose", action="store_true")
+    sm.add_argument("--model", dest="model_path", default=None)
+    sm.set_defaults(fn=cmd_smoke)
 
     c = sub.add_parser("cast", help="cast prompts to NQL")
     c.add_argument("prompt", nargs="+")

@@ -113,16 +113,30 @@ class Cast:
         if not os.path.exists(ckpt_path):
             raise FileNotFoundError(f"no checkpoint at {ckpt_path}")
 
+        # Locate tokenizer.json relative to the CHECKPOINT, walking up a few
+        # levels, before falling back to the cwd. Searching only the cwd meant
+        # `Cast.from_pretrained("/abs/path/runs/v1")` failed whenever the caller
+        # was in a different directory — which is every real usage outside the
+        # repo root. Found by scripts/smoketest.py run from /tmp.
         base = os.path.dirname(os.path.abspath(ckpt_path))
-        candidates = [
-            os.path.join(base, "tokenizer.json"),
-            os.path.join(base, "..", "data", "tokenizer.json"),
-            os.path.join(os.getcwd(), "data", "tokenizer.json"),
-        ]
+        candidates = [os.path.join(base, "tokenizer.json")]
+        up = base
+        for _ in range(3):
+            up = os.path.dirname(up)
+            if not up:
+                break
+            candidates.append(os.path.join(up, "data", "tokenizer.json"))
+            candidates.append(os.path.join(up, "tokenizer.json"))
+        candidates.append(os.path.join(os.getcwd(), "data", "tokenizer.json"))
+        candidates.append(os.path.join(os.getcwd(), "tokenizer.json"))
+
         tok_path = next((c for c in candidates if os.path.exists(c)), None)
         if tok_path is None:
             raise FileNotFoundError(
-                "tokenizer.json not found next to the checkpoint or in ./data")
+                "tokenizer.json not found. Looked in:\n  " +
+                "\n  ".join(os.path.normpath(c) for c in candidates) +
+                "\nPass a model.cast container instead (it embeds the vocab), "
+                "or use Cast.pretrained().")
 
         ck = torch.load(ckpt_path, map_location="cpu", weights_only=False)
         model = CastModel(CastConfig(**ck["cfg"]))
