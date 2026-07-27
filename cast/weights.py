@@ -27,6 +27,7 @@ import hashlib
 import json
 import os
 import shutil
+import sys
 import tempfile
 import urllib.error
 import urllib.request
@@ -39,6 +40,8 @@ SUMS_ASSET = "SHA256SUMS.txt"
 
 # Pinned by default so a package version always resolves the same weights.
 # Overridable for testing against a newer release.
+# Pinned to the release that actually carries the weights. A packaging-only
+# patch bump must NOT chase its own tag, or Cast.pretrained() 404s.
 DEFAULT_TAG = os.environ.get("CAST_MODEL_TAG", "v10.30.90")
 
 _UA = {"User-Agent": "nedb-cast-slm/weights"}
@@ -60,6 +63,9 @@ def _asset_url(tag: str, name: str) -> str:
 
 
 def _download(url: str, dest: Path, quiet: bool = False) -> None:
+    # Only draw a progress bar on a real terminal. Writing \r into a
+    # non-TTY (CI logs, piped output, nohup) produces hundreds of junk lines.
+    show = (not quiet) and sys.stdout.isatty()
     req = urllib.request.Request(url, headers=_UA)
     try:
         with urllib.request.urlopen(req, timeout=300) as r:
@@ -73,13 +79,15 @@ def _download(url: str, dest: Path, quiet: bool = False) -> None:
                         break
                     fh.write(chunk)
                     done += len(chunk)
-                    if not quiet and total:
+                    if show and total:
                         pct = 100 * done / total
                         print(f"\r  {dest.name}: {pct:5.1f}% "
                               f"({done/1e6:.1f}/{total/1e6:.1f} MB)",
                               end="", flush=True)
-            if not quiet:
+            if show and total:
                 print()
+            elif not quiet:
+                print(f"  {dest.name}: {done/1e6:.1f} MB")
             tmp.replace(dest)
     except urllib.error.HTTPError as e:
         raise RuntimeError(

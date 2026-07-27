@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nedb-cast-slm"
-version = "10.30.90"
+version = "10.30.92"
 description = "A 3.3M-parameter small language model that casts short prompts into NEDB query plans, with causal provenance in the engine itself."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -25,13 +25,23 @@ classifiers = [
     "Topic :: Database",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
+# torch is NOT a hard dependency on purpose.
+#
+# Requiring it made `pip install nedb-cast-slm` fail outright on any platform
+# without a torch wheel (new Python releases, MSYS2/MINGW Python, 32-bit), even
+# for users who only wanted the CLI, the NQL parser, or the torch-free Rust core.
+# The Python inference path does need torch, so it lives in the `torch` extra and
+# cast.inference raises a precise install message if it is missing.
 dependencies = [
-    "torch>=2.0",
     "nedb-engine>=2.7.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7"]
+# pip install "nedb-cast-slm[torch]"     -> Python inference + training
+torch = ["torch>=2.0", "numpy"]
+# pip install "nedb-cast-slm[train]"     -> same, named for intent
+train = ["torch>=2.0", "numpy"]
+dev = ["pytest>=7", "torch>=2.0", "numpy"]
 
 [project.urls]
 Homepage = "https://interchained.org"
@@ -45,4 +55,6 @@ cast = "cast.cli:main"
 packages = ["cast"]
 
 [tool.setuptools.package-data]
-cast = ["py.typed"]
+# smoketest.py ships INSIDE the package so `cast smoke` works from a plain
+# `pip install` with no repo clone.
+cast = ["py.typed", "smoketest.py"]
