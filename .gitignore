@@ -14,10 +14,6 @@ runs/*/ckpt.pt
 runs_*.log
 *.pt
 
-# NEDB ledger (local; regenerate via the pipeline)
-ledger/
-
-# parity artifacts (regenerate via scripts/dump_parity_fixtures.py)
-*.cast
-rust/**/target/
-rust/nedb-cast-core/tests/fixtures.json
+# The NEDB ledger IS shipped — it is 4KB, portable, and lets anyone who clones
+# run `cast lineage` and verify provenance without training anything.
+# (deliberately NOT ignored)
