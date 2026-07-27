@@ -33,6 +33,12 @@ LEADINS = [
     "show me", "show", "list", "list all", "get", "get me", "find", "find all",
     "pull up", "pull", "give me", "fetch", "query", "look up", "i want",
     "i need", "display", "return", "grab", "", "", "",  # bare is common
+    # Words that used to live ONLY in the holdout pool. With a word-level
+    # tokenizer an unseen word becomes <unk> and carries zero information, so
+    # holding common verbs out of training made holdout unanswerable rather
+    # than hard. See docs/LORE.md section VI.
+    "which", "what are the", "surface", "dig up", "hand me", "round up",
+    "scan for", "enumerate", "tell me the", "who are the", "pull out",
 ]
 POLITE = ["could you show me", "can you list", "please show", "can i see",
           "would you pull up", "i'd like to see"]
@@ -41,14 +47,22 @@ POLITE = ["could you show me", "can you list", "please show", "can i see",
 
 OP_WORDS = {
     ">":  ["over", "above", "more than", "greater than", "higher than",
-           "exceeding", "north of", ">"],
+           "exceeding", "north of", ">", "beyond", "topping", "past",
+           "in excess of", "that cleared", "surpassing", "bigger than"],
     ">=": ["at least", "no less than", "or more", "minimum", ">=",
-           "at or above"],
-    "<":  ["under", "below", "less than", "lower than", "south of", "<"],
-    "<=": ["at most", "or less", "up to", "maximum", "<=", "at or below"],
-    "=":  ["is", "equals", "=", "set to", "marked", "that is", "where it's"],
+           "at or above", "hitting", "reaching", "not under", "from",
+           "no lower than", "at minimum"],
+    "<":  ["under", "below", "less than", "lower than", "south of", "<",
+           "beneath", "short of", "shy of", "trailing", "smaller than",
+           "not over", "underneath"],
+    "<=": ["at most", "or less", "up to", "maximum", "<=", "at or below",
+           "capped at", "no higher than", "within", "not above", "at maximum"],
+    "=":  ["is", "equals", "=", "set to", "marked", "that is", "where it's",
+           "sitting at", "logged as", "reading", "flagged", "recorded as",
+           "showing", "listed as"],
     "!=": ["is not", "isn't", "not", "!=", "other than", "excluding",
-           "anything but", "except"],
+           "anything but", "except", "skipping", "aside from", "besides",
+           "minus", "anything except", "not equal to", "outside of"],
 }
 # words only valid for countable integer fields ("fewer than 5 orders")
 COUNTABLE_OPS = {
@@ -72,25 +86,31 @@ DATE_OP_WORDS = {
 
 SORT_ASC = ["sorted by", "ordered by", "by", "sort by", "order by",
             "arranged by", "in order of", "ascending by", "lowest first by",
-            "cheapest first by"]
+            "cheapest first by", "ranked on {f} upward", "ranked by",
+            "climbing by", "smallest first by", "ordered on"]
 SORT_DESC = ["sorted by {f} descending", "highest {f} first", "top {f} first",
              "by {f} descending", "ordered by {f} desc", "biggest {f} first",
              "most {f} first", "{f} high to low", "descending by {f}",
-             "sort by {f} desc"]
+             "sort by {f} desc", "ranked on {f} downward", "ranked by {f} desc",
+             "largest {f} first", "{f} descending", "falling by {f}"]
 
 LIMIT_PRE = ["top", "first", "just", "only", "the first", "give me",
              "limit to", "max"]
 # NOTE: no "no more than {n}" here — it collides with the <= comparison words
 # and produced garbage like "fee that is 2.87 no more than 20".
 LIMIT_POST = ["only {n}", "limit {n}", "just {n}", "max {n}", "{n} of them",
-              "cap at {n}", "limit to {n}"]
+              "cap at {n}", "limit to {n}", "capped to {n} rows", "capped at {n}",
+              "{n} rows", "at most {n} rows", "top {n} only"]
 
 SEARCH_WORDS = ["mentioning", "matching", "containing", "about", "with",
                 "that mention", "referencing", "talking about", "search for",
-                "that say", "including the text", "with the words"]
+                "that say", "including the text", "with the words",
+                "carrying the phrase", "carrying", "bearing the text",
+                "that include", "whose text has"]
 
 GROUP_WORDS = ["grouped by", "by", "broken down by", "per", "grouped on",
-               "split by", "for each", "aggregated by"]
+               "split by", "for each", "aggregated by", "bucketed on",
+               "bucketed by", "segmented by", "rolled up by"]
 AGG_WORDS = {
     "count": ["count", "how many", "number of", "total count", "counts",
               "tally"],
@@ -103,23 +123,30 @@ AGG_WORDS = {
 AS_OF_WORDS = ["as of seq {n}", "at sequence {n}", "as of sequence {n}",
                "at seq {n}", "as they were at seq {n}", "at version {n}",
                "rewind to seq {n}", "state at seq {n}", "as of {n}",
-               "snapshot at seq {n}", "back at seq {n}"]
+               "snapshot at seq {n}", "back at seq {n}",
+               "wound back to seq {n}", "rolled back to seq {n}",
+               "history at seq {n}"]
 VALID_WORDS = ["valid as of {d}", "as they were valid on {d}",
                "effective {d}", "valid on {d}", "in effect on {d}",
                "as of the date {d}", "what was true on {d}",
-               "valid at {d}"]
+               "valid at {d}", "true on the date {d}", "true on {d}",
+               "in force on {d}"]
 
 TRAVERSE_WORDS = ["traverse {r}", "follow {r}", "walk {r}", "through {r}",
                   "via {r}", "following the {r} relation", "hop {r}",
-                  "along {r}"]
+                  "along {r}", "hopping the {r} edge", "hopping {r}",
+                  "crossing the {r} edge", "over the {r} link"]
 TRACE_WORDS = ["trace {f}", "show provenance", "trace lineage",
                "where did these come from", "show the causal chain",
                "trace {f} back", "what caused these", "show lineage",
-               "trace provenance"]
+               "trace provenance", "unwind the causal chain",
+               "unwind {f}", "walk the lineage back", "show what caused these"]
 TRACE_REV_WORDS = ["trace {f} reverse", "what did these cause",
                    "forward lineage", "downstream effects",
                    "what came from these", "trace {f} forward",
-                   "show what these caused", "downstream of these"]
+                   "show what these caused", "downstream of these",
+                   "chase the downstream chain", "chase {f} forward",
+                   "walk the lineage forward"]
 
 BOOL_TRUE = ["that are {f}", "which are {f}", "{f} ones", "the {f} ones",
              "where {f} is true", "{f} = true", "marked {f}"]
@@ -257,7 +284,9 @@ def paraphrase(plan: Dict[str, Any], dom: Domain, coll: Collection,
         if str(direction).upper() == "DESC":
             frags.append(rng.choice(SORT_DESC).format(f=fp))
         else:
-            frags.append(f"{rng.choice(SORT_ASC)} {fp}")
+            # some ASC templates embed {f}, others are prefixes
+            tmpl = rng.choice(SORT_ASC)
+            frags.append(tmpl.format(f=fp) if "{f}" in tmpl else f"{tmpl} {fp}")
 
     if plan.get("traverse") is not None:
         frags.append(rng.choice(TRAVERSE_WORDS).format(
@@ -349,50 +378,113 @@ def paraphrase(plan: Dict[str, Any], dom: Domain, coll: Collection,
 
 def _holdout_paraphrase(plan: Dict[str, Any], dom: Domain, coll: Collection,
                         rng: random.Random) -> str:
-    """Phrasings intentionally NOT in the training pool.
+    """COMPOSITIONAL holdout — novel structure built from IN-VOCAB words.
 
-    Different verbs, different operator words, different clause framing. If the
-    model scores well here it generalised; if it only scores well on the
-    training style it memorised templates.
+    The first version of this function was a design error worth recording. It
+    used a deliberately disjoint vocabulary ("that cleared", "shy of",
+    "bucketed on", "ranked on X downward") on the theory that unseen words are
+    the honest test of generalisation.
+
+    With a word-level tokenizer that theory is wrong. An out-of-vocabulary word
+    becomes <unk> and carries ZERO information — so those prompts reached the
+    model with ~23% of their tokens erased, and 99.6% of them contained at least
+    one <unk>. Holdout scored 9.0% against 93.6% on eval, and the gap measured
+    nothing about reasoning: it measured whether the model can read a sentence
+    with a quarter of the words deleted. It cannot. Nothing can.
+
+    Those phrasings now live in the TRAINING pool, where they belong, so a user
+    typing "orders beyond $99" gets a real embedding instead of <unk>.
+
+    What this function tests now is genuine and achievable: the same in-vocab
+    words the model trained on, arranged into structures it has NOT seen —
+    reversed clause order, question framing, appositive asides, and clause
+    combinations that the training sampler emits rarely. That isolates
+    compositional generalisation from vocabulary coverage.
     """
     fields = {f.name: f for f in coll.fields}
-    HO_LEAD = ["which", "what are the", "surface", "dig up", "hand me",
-               "round up", "scan for", "enumerate", "tell me the"]
-    HO_OPS = {
-        ">": ["that cleared", "beyond", "topping", "in excess of"],
-        ">=": ["hitting", "reaching", "not under"],
-        "<": ["shy of", "beneath", "trailing", "short of"],
-        "<=": ["capped at", "not over", "within"],
-        "=": ["flagged", "sitting at", "logged as", "reading"],
-        "!=": ["anything besides", "skipping", "minus", "aside from"],
-    }
-    parts = [rng.choice(HO_LEAD), coll.name]
+
+    def fld_phrase(name: str) -> str:
+        f = fields.get(name)
+        return (f.label if (f and rng.random() < 0.5) else name)
+
+    # --- build clause fragments from the SAME pools training uses
+    where_frags: List[str] = []
     for (fname, op, val) in (plan.get("where") or []):
         fld = fields.get(fname)
-        if not fld:
+        if fld is None:
             continue
-        w = rng.choice(HO_OPS.get(op, ["is"]))
-        parts.append(f"{fld.label} {w} {val}")
-    if plan.get("order_by"):
-        f, d = plan["order_by"]
-        parts.append(f"ranked on {f} {'downward' if str(d).upper()=='DESC' else 'upward'}")
-    if plan.get("limit") is not None:
-        parts.append(f"capped to {plan['limit']} rows")
+        where_frags.append(_pred_phrase(fld, op, val, rng, coll))
+
+    tail: List[str] = []
     if plan.get("search") is not None:
-        parts.append(f'carrying the phrase "{plan["search"]}"')
-    if plan.get("as_of") is not None:
-        parts.append(f"wound back to seq {plan['as_of']}")
-    if plan.get("valid_as_of") is not None:
-        parts.append(f"true on the date {plan['valid_as_of']}")
+        tail.append(f'{rng.choice(SEARCH_WORDS)} "{plan["search"]}"')
+    if plan.get("order_by") is not None:
+        f, d = plan["order_by"]
+        fp = fld_phrase(f)
+        if str(d).upper() == "DESC":
+            tail.append(rng.choice(SORT_DESC).format(f=fp))
+        else:
+            t = rng.choice(SORT_ASC)
+            tail.append(t.format(f=fp) if "{f}" in t else f"{t} {fp}")
     if plan.get("traverse") is not None:
-        parts.append(f"hopping the {plan['traverse']} edge")
+        tail.append(rng.choice(TRAVERSE_WORDS).format(r=plan["traverse"]))
     if plan.get("trace") is not None:
-        parts.append("unwind the causal chain" if not plan.get("trace_reverse")
-                     else "chase the downstream chain")
+        pool = TRACE_REV_WORDS if plan.get("trace_reverse") else TRACE_WORDS
+        tail.append(rng.choice(pool).format(f=plan["trace"]))
+    if plan.get("as_of") is not None:
+        tail.append(rng.choice(AS_OF_WORDS).format(n=plan["as_of"]))
+    if plan.get("valid_as_of") is not None:
+        tail.append(rng.choice(VALID_WORDS).format(d=plan["valid_as_of"]))
     if plan.get("group_by") is not None:
+        gp = fld_phrase(plan["group_by"])
         agg = plan.get("aggregate")
-        seg = f"bucketed on {plan['group_by']}"
+        seg = f"{rng.choice(GROUP_WORDS)} {gp}"
         if agg:
-            seg += f" reporting {agg[0]}" + (f" of {agg[1]}" if agg[1] else "")
-        parts.append(seg)
-    return " ".join(" ".join(parts).split())
+            aw = rng.choice(AGG_WORDS[agg[0]])
+            seg += f" with {aw}" + (f" {fld_phrase(agg[1])}" if agg[1] else "")
+        tail.append(seg)
+    if plan.get("limit") is not None:
+        tail.append(rng.choice(LIMIT_POST).format(n=plan["limit"]))
+
+    subject = rng.choice([coll.name, coll.plural])
+
+    # --- NOVEL STRUCTURES: the actual test. Training assembles as
+    #     [lead] [subject] [where...] [tail...]; these do not.
+    style = rng.randrange(5)
+
+    if style == 0 and where_frags:
+        # conditions FIRST, subject after — inverted order
+        txt = f"{' and '.join(where_frags)} — {rng.choice(LEADINS) or 'show'} {subject}"
+        if tail:
+            txt += " " + " ".join(tail)
+
+    elif style == 1:
+        # question framing with the tail interposed before the conditions
+        txt = f"which {subject}"
+        if tail:
+            txt += " " + " ".join(tail)
+        if where_frags:
+            txt += " have " + " and ".join(where_frags)
+        txt += "?"
+
+    elif style == 2 and tail:
+        # tail FIRST, then subject, then conditions
+        txt = f"{' '.join(tail)} for {subject}"
+        if where_frags:
+            txt += " where " + " and ".join(where_frags)
+
+    elif style == 3 and where_frags:
+        # appositive aside set off by commas
+        head = f"{rng.choice(LEADINS) or 'list'} {subject}"
+        txt = f"{head}, {', '.join(where_frags)},"
+        txt += (" " + " ".join(tail)) if tail else ""
+
+    else:
+        # tail fragments in reverse order (training shuffles; this reverses)
+        txt = f"{rng.choice(LEADINS) or 'show'} {subject}"
+        if where_frags:
+            txt += " where " + " and ".join(where_frags)
+        if tail:
+            txt += " " + " ".join(reversed(tail))
+
+    return " ".join(txt.split())

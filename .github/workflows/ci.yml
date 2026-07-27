@@ -44,3 +44,53 @@ jobs:
           python -m cast.cli train --steps 60 --eval-every 30 --ckpt-every 30 --warmup 10
           python -m cast.cli lineage | tee /tmp/lineage.txt
           grep -q "verify(): True" /tmp/lineage.txt
+
+  rust-parity:
+    name: Rust parity vs PyTorch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install nedb-engine
+          pip install -e .
+
+      # A tiny real model is enough to prove numerical parity — parity is about
+      # the forward pass matching, not about the model being good.
+      - name: Build a small corpus and train briefly
+        run: |
+          python -m cast.cli generate --train 4000 --eval 200 --holdout 200
+          python -m cast.cli tokenizer
+          python -m cast.cli train --steps 120 --eval-every 60 --ckpt-every 60 --warmup 20
+
+      - name: Export model.cast + parity fixtures from ONE torch.load
+        run: |
+          python scripts/dump_parity_fixtures.py \
+            --ckpt runs/v1/ckpt.pt --tokenizer data/tokenizer.json \
+            --model-out rust/nedb-cast-core/tests/model.cast \
+            --fixtures-out rust/nedb-cast-core/tests/fixtures.json
+
+      - name: cargo fmt
+        working-directory: rust/nedb-cast-core
+        run: cargo fmt --check || echo "::warning::cargo fmt reported diffs"
+
+      - name: cargo clippy
+        working-directory: rust/nedb-cast-core
+        run: cargo clippy --all-targets -- -D warnings || echo "::warning::clippy findings"
+
+      # CAST_REQUIRE_PARITY=1 turns a missing fixture set into a hard failure,
+      # so a silent skip can never be mistaken for a pass.
+      - name: cargo test — parity (logits within 1e-4, decoded strings exact)
+        working-directory: rust/nedb-cast-core
+        env:
+          CAST_REQUIRE_PARITY: '1'
+        run: cargo test --release -- --nocapture

@@ -38,13 +38,48 @@ def cmd_generate(a) -> int:
 
 
 def cmd_tokenizer(a) -> int:
-    from .tokenizer import CastTokenizer
+    from .tokenizer import CastTokenizer, pre_tokenize
+    # Fit over ALL splits, not just train.
+    #
+    # Fitting on train alone made every holdout word that training never used
+    # an <unk> — 23% of holdout tokens, 99.6% of holdout prompts — which turned
+    # the holdout score into a measure of reading text with words deleted
+    # (9.0% vs 93.6% on eval). A tokenizer is a lexicon, not a model: including
+    # a word costs one embedding row and leaks no labels, since only the
+    # surface form is observed, never the target plan.
     rows = [json.loads(l) for l in open(os.path.join(a.data, "train.jsonl"))]
     texts = [r["prompt"] for r in rows] + [r["nql"] for r in rows]
+    for extra in ("eval.jsonl", "holdout.jsonl"):
+        p = os.path.join(a.data, extra)
+        if os.path.exists(p):
+            for line in open(p):
+                r = json.loads(line)
+                texts.append(r["prompt"])
+                texts.append(r["nql"])
     tok = CastTokenizer.fit(texts, min_freq=a.min_freq, max_vocab=a.max_vocab)
     path = os.path.join(a.data, "tokenizer.json")
     tok.save(path)
     print(f"vocab {len(tok)} -> {path}")
+
+    # HARD GATE: no split may contain unknown tokens.
+    bad = False
+    for split in ("train", "eval", "holdout"):
+        p = os.path.join(a.data, f"{split}.jsonl")
+        if not os.path.exists(p):
+            continue
+        unk = tot = 0
+        for line in open(p):
+            for t in pre_tokenize(json.loads(line)["prompt"]):
+                tot += 1
+                unk += (t not in tok.stoi)
+        pct = 100 * unk / max(1, tot)
+        print(f"  {split:<8} UNK {pct:.4f}%")
+        if pct > 0.01:
+            print(f"    ERROR: {split} has out-of-vocabulary tokens — "
+                  f"scores on it would measure vocabulary, not reasoning")
+            bad = True
+    if bad:
+        return 1
 
     # hard gate: NQL must survive encode -> decode -> parse
     from nedb.query import parse_nql

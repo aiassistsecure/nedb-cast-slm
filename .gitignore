@@ -16,3 +16,8 @@ runs_*.log
 
 # NEDB ledger (local; regenerate via the pipeline)
 ledger/
+
+# parity artifacts (regenerate via scripts/dump_parity_fixtures.py)
+*.cast
+rust/**/target/
+rust/nedb-cast-core/tests/fixtures.json
