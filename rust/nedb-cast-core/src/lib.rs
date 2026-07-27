@@ -31,7 +31,7 @@ mod format;
 mod model;
 mod tokenizer;
 
-pub use format::{fnv1a64, Config, LoadError, ModelFile};
+pub use format::{fnv1a64, Config, LoadError, ModelFile, FNV_OFFSET_BASIS, FNV_PRIME};
 pub use model::CastModel;
 pub use tokenizer::Tokenizer;
 
@@ -107,10 +107,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fnv_matches_known_vector() {
-        // FNV-1a 64 of b"" and b"a" are fixed, well-known values.
-        assert_eq!(fnv1a64(b""), 0xcbf2_9ce4_8422_2325);
-        assert_eq!(fnv1a64(b"a"), 0xaf63_dc4c_8601_ec8c);
+    fn fnv_matches_known_vectors() {
+        // Published FNV-1a 64 test vectors. This test earned its keep: it caught
+        // `0x1000_0000_01b3` as the prime — underscore grouping that reads as
+        // correct but is 17592186044851 instead of 1099511628211. Every checksum
+        // verification would have failed against the Python exporter.
+        assert_eq!(fnv1a64(b""), 0xcbf29ce484222325, "offset basis wrong");
+        assert_eq!(fnv1a64(b"a"), 0xaf63dc4c8601ec8c, "prime or order wrong");
+        assert_eq!(fnv1a64(b"abc"), 0xe71fa2190541574b);
+        assert_eq!(fnv1a64(b"foobar"), 0x85944171f73967e8);
+    }
+
+    #[test]
+    fn fnv_constants_are_exact() {
+        // Guard the literals themselves, so a future "readability" edit that
+        // regroups the digits fails here instead of silently corrupting hashes.
+        assert_eq!(FNV_PRIME, 1_099_511_628_211u64);
+        assert_eq!(FNV_OFFSET_BASIS, 14_695_981_039_346_656_037u64);
     }
 
     #[test]
