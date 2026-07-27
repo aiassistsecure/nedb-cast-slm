@@ -61,7 +61,20 @@ def cmd_tokenizer(a) -> int:
     tok.save(path)
     print(f"vocab {len(tok)} -> {path}")
 
-    # HARD GATE: no split may contain unknown tokens.
+    # GATE: the EVALUATION splits must be fully in-vocabulary.
+    #
+    # Why eval/holdout are held to zero but train is not: a score is only
+    # meaningful if the model can actually read the prompt. Fitting on train
+    # alone once left holdout at 22.97% <unk> — 99.6% of its prompts had at
+    # least one — so its 9.0% score measured reading text with words deleted,
+    # not reasoning. That must never recur, hence a hard zero.
+    #
+    # `train` is allowed a small tail. `CastTokenizer.fit` uses min_freq, so on
+    # a small corpus a word occurring once is legitimately dropped; those tokens
+    # becoming <unk> during TRAINING is normal and even useful (it teaches the
+    # model that <unk> exists). Only a large train UNK rate signals a real
+    # problem, so it warns rather than fails.
+    TRAIN_UNK_WARN = 1.0   # percent
     bad = False
     for split in ("train", "eval", "holdout"):
         p = os.path.join(a.data, f"{split}.jsonl")
@@ -74,9 +87,15 @@ def cmd_tokenizer(a) -> int:
                 unk += (t not in tok.stoi)
         pct = 100 * unk / max(1, tot)
         print(f"  {split:<8} UNK {pct:.4f}%")
-        if pct > 0.01:
-            print(f"    ERROR: {split} has out-of-vocabulary tokens — "
-                  f"scores on it would measure vocabulary, not reasoning")
+        if split == "train":
+            if pct > TRAIN_UNK_WARN:
+                print(f"    WARNING: train UNK {pct:.4f}% exceeds "
+                      f"{TRAIN_UNK_WARN}% — vocabulary may be too small "
+                      f"(raise --max-vocab or lower --min-freq)")
+        elif pct > 0.0:
+            print(f"    ERROR: {split} contains out-of-vocabulary tokens — a "
+                  f"score on it would measure vocabulary coverage, not "
+                  f"reasoning. Fit the tokenizer over all splits.")
             bad = True
     if bad:
         return 1
