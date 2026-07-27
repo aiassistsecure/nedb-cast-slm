@@ -67,6 +67,34 @@ verified against the `SHA256SUMS.txt` published in the same release. They are no
 bundled in the tarball — 13MB times every platform in the prebuild matrix buys
 nothing.
 
+## Or let the database do it
+
+As of **NEDB v2.8.0** the daemon ships this model natively, so a JS app can skip the
+weights entirely and just ask the server:
+
+```js
+const { NedbClient } = require('nedb-engine-client');
+
+const db = new NedbClient({ url: 'http://127.0.0.1:7070', db: 'shop' });
+const plan = await db.cast('orders over 100');
+// { nql: 'FROM orders WHERE total > 100', valid: true,
+//   collection_known: true, executed: false }
+```
+
+Server-side has one advantage this package cannot match: the engine knows the **live
+schema**, so it can tell you the model named a collection that does not exist —
+
+```js
+await db.cast('show me all stylists');
+// NedbError 422: collection "stylists" does not exist in "shop"
+//                (generated: "FROM stylists")
+```
+
+— instead of handing back NQL that will quietly return zero rows.
+
+Use this package when you want inference in-process (offline, edge, no daemon).
+Use `db.cast()` when a `nedbd` is already running. Both load identical weights.
+
 ## Honest limits
 
 - **Long digit runs.** `"blocks above height 400000"` becomes `WHERE height > 4000`.
@@ -77,8 +105,8 @@ nothing.
 - **The boundary:** this interprets short prompts into a constrained grammar. It does
   not write code, and nothing at 3.3M parameters will.
 
-Full failure analysis, including the eight bugs found building it (**none in the
-model**): [docs/LORE.md](https://github.com/aiassistsecure/nedb-cast-slm/blob/main/docs/LORE.md).
+Full failure analysis, including the five bugs found building it — **not one of them
+in the model**: [docs/LORE.md](https://github.com/aiassistsecure/nedb-cast-slm/blob/main/docs/LORE.md).
 
 ## License
 

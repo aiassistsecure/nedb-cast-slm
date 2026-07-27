@@ -209,6 +209,74 @@ caster.run("paid orders over $99", db)
 `plan()` raising on invalid output is intentional. A query planner that silently
 returns *almost* the right query is worse than one that admits it failed.
 
+---
+
+## It ships inside the engine
+
+As of **NEDB v2.8.0**, this model is a first-class feature of the database itself.
+No client library, no separate service — the daemon answers English.
+
+```bash
+cargo install nedb-engine --features cast
+nedbd --dag --cast ./data
+#   cast     enabled - 3.33M params, vocab 581, ./data/model.cast
+
+curl -X POST localhost:7070/v1/databases/shop/cast \
+  -d '{"prompt":"orders over 100"}'
+# {"nql":"FROM orders WHERE total > 100","valid":true,
+#  "collection_known":true,"executed":false}
+```
+
+### Why in the engine and not in a client
+
+Because the hard part was never the model — it is **knowing the schema**.
+
+A client has to fetch the collection list and pass it in, where it is stale on
+arrival. The engine already holds the live list, so the plan gets checked against
+collections that actually exist, at the instant of the call:
+
+```json
+{ "nql": "FROM stylists",
+  "valid": true,
+  "collection_known": false,
+  "error": "collection \"stylists\" does not exist in \"shop\"" }
+```
+
+HTTP **422**. Not zero rows — zero rows reads as *"no matching data"*, which would
+be a lie. The query was well-formed; the collection was imagined. That is this
+model's known failure mode on an unfamiliar schema (see
+[What it gets wrong](#what-it-gets-wrong)), and the engine is the one component
+positioned to catch it every time.
+
+Every `nedbd` client — Python, Node, Studio, `curl` — inherits that for free.
+
+### Three safety properties
+
+| | |
+|---|---|
+| **The model never executes** | It emits text. That text goes to the same query path a hand-typed NQL string uses. There is no second executor to audit. |
+| **Validation is parsing** | The engine's `parse` and `execute` share one code path, so they cannot disagree about what is well-formed. |
+| **`execute` defaults to false** | You get a plan for review. Running a guess silently is worse than admitting uncertainty. |
+
+That last one exists because of a miss caught on real data:
+
+```
+prompt   "paid orders over 100"
+nql      FROM orders WHERE status = "paid" LIMIT 100      <- wrong
+correct  FROM orders WHERE status = "paid" AND total > 100
+```
+
+It read *"over 100"* as `LIMIT 100` and dropped the predicate. The row count still
+came back **2** — because both paid orders happened to exceed 100. A count-only
+assertion would have called it a pass.
+
+That is the multi-predicate `WHERE` weakness in the table above (85.1% / 61.2%)
+showing up in production, exactly where the docs said it would.
+
+Full endpoint docs: [**NEDB README**](https://github.com/Eth-Interchained/nedb#cast--natural-language-into-nql).
+
+---
+
 ## Train your own
 
 ```bash
