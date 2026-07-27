@@ -1,6 +1,6 @@
 [package]
 name = "nedb-cast-core"
-version = "0.1.0"
+version = "10.30.90"
 edition = "2021"
 rust-version = "1.70"
 description = "Pure-Rust inference for nedb-cast-slm — casts short prompts into NEDB query plans. Zero Python, zero PyTorch, zero dependencies."

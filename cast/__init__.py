@@ -20,5 +20,5 @@ silently handing back something the engine cannot run.
 """
 from .inference import Cast  # noqa: F401
 
-__version__ = "0.1.0"
+__version__ = "10.30.90"
 __all__ = ["Cast"]
