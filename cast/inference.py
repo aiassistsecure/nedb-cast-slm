@@ -42,6 +42,61 @@ class Cast:
 
     # ------------------------------------------------------------------ load
     @classmethod
+    def pretrained(cls, tag: Optional[str] = None, quiet: bool = False) -> "Cast":
+        """Load the released model, downloading it once on first use.
+
+        Weights live as GitHub release assets rather than in git history, so a
+        fresh `pip install` ships code without weights. This closes that gap:
+
+            from cast import Cast
+            caster = Cast.pretrained()
+            caster.cast("top 5 stylists in winter park")
+
+        The download is cached under $CAST_HOME (or ~/.cache/nedb-cast-slm) and
+        checked against the release's SHA256SUMS.txt. A corrupt model would emit
+        plausible-but-wrong queries, so a mismatch raises rather than loading.
+        """
+        from .weights import fetch
+        return cls.from_cast_file(fetch(tag=tag, quiet=quiet))
+
+    @classmethod
+    def from_cast_file(cls, path: str) -> "Cast":
+        """Load from a `model.cast` container (the portable, torch-free format).
+
+        This is the same file the Rust crate consumes, so Python and Rust load
+        byte-identical weights — which is what makes the parity guarantee mean
+        anything across languages.
+        """
+        import json as _json
+        import struct
+
+        raw = open(path, "rb").read()
+        if raw[:8] != b"CASTMDL1":
+            raise ValueError(f"{path} is not a model.cast container (bad magic)")
+        hlen = struct.unpack("<I", raw[8:12])[0]
+        hdr = _json.loads(raw[12:12 + hlen].decode())
+        blob = raw[12 + hlen:12 + hlen + hdr["blob_bytes"]]
+
+        cfg_d = dict(hdr["config"])
+        cfg_d.pop("dropout", None)
+        cfg = CastConfig(**cfg_d, dropout=0.0)
+        model = CastModel(cfg)
+
+        import numpy as _np
+        sd = {}
+        for t in hdr["tensors"]:
+            off, ln = t["offset"], t["length"]
+            arr = _np.frombuffer(blob[off:off + ln], dtype="<f4").reshape(t["shape"])
+            sd[t["name"]] = torch.from_numpy(arr.copy())
+        # head.weight is tied to tok_emb.weight and therefore absent from the blob
+        sd.setdefault("head.weight", sd["tok_emb.weight"])
+        model.load_state_dict(sd, strict=True)
+
+        tok = CastTokenizer(hdr["vocab"])
+        return cls(model, tok, step=hdr.get("source_step", -1),
+                   meta={"container": str(path)})
+
+    @classmethod
     def from_pretrained(cls, path: str) -> "Cast":
         """Load from a run directory (containing ckpt.pt) or an explicit .pt file.
 
@@ -52,6 +107,9 @@ class Cast:
             ckpt_path = os.path.join(path, "ckpt.pt")
         else:
             ckpt_path = path
+        # transparently accept the portable container
+        if str(ckpt_path).endswith(".cast"):
+            return cls.from_cast_file(ckpt_path)
         if not os.path.exists(ckpt_path):
             raise FileNotFoundError(f"no checkpoint at {ckpt_path}")
 
