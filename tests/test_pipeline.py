@@ -184,3 +184,84 @@ def test_content_address_stable_across_processes(tmp_path):
         assert r.returncode == 0, r.stderr[-2000:]
         ids.append(r.stdout.strip().splitlines()[-1])
     assert ids[0] == ids[1], f"content address unstable: {ids}"
+
+
+# --------------------------------------------------------------- rust parity
+# These guard the Python SIDE of the Rust port: the exporter's container format
+# and the fixture generator. The Rust side is exercised by `cargo test` in CI
+# (see .github/workflows/ci.yml, job `rust-parity`) because this sandbox has no
+# C linker and cannot link a Rust binary.
+
+@pytest.mark.skipif(not os.path.exists("runs/v1/ckpt.pt"),
+                    reason="no trained checkpoint available")
+def test_export_container_is_wellformed(tmp_path):
+    """model.cast must be readable exactly as rust/src/format.rs reads it."""
+    import struct
+    import subprocess
+
+    out = tmp_path / "model.cast"
+    r = subprocess.run(
+        [sys.executable, "scripts/export_weights.py", "--ckpt", "runs/v1/ckpt.pt",
+         "--tokenizer", "data/tokenizer.json", "--out", str(out)],
+        capture_output=True, text=True, timeout=900)
+    assert r.returncode == 0, r.stderr[-2000:]
+
+    raw = out.read_bytes()
+    assert raw[:8] == b"CASTMDL1", "bad magic"
+    hlen = struct.unpack("<I", raw[8:12])[0]
+    hdr = json.loads(raw[12:12 + hlen].decode())
+
+    assert hdr["format"] == "cast-model/1"
+    assert len(hdr["vocab"]) == hdr["config"]["vocab_size"]
+
+    names = {t["name"] for t in hdr["tensors"]}
+    # weight tying: head must NOT be exported separately
+    assert "head.weight" not in names, "head.weight exported despite weight tying"
+    assert "tok_emb.weight" in names
+
+    # every tensor's declared length must equal prod(shape)*4 and sit in range
+    blob = raw[12 + hlen:12 + hlen + hdr["blob_bytes"]]
+    assert len(blob) == hdr["blob_bytes"], "blob truncated"
+    for t in hdr["tensors"]:
+        n = 1
+        for d in t["shape"]:
+            n *= d
+        assert t["length"] == n * 4, f"{t['name']}: length != prod(shape)*4"
+        assert t["offset"] + t["length"] <= hdr["blob_bytes"], f"{t['name']} out of range"
+
+    # FNV-1a 64 over the blob must match the header
+    h = 0xcbf29ce484222325
+    for b in blob:
+        h ^= b
+        h = (h * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF
+    want = int(hdr["checksum"]["value"])
+    assert h == want, f"checksum mismatch: computed {h}, header {want}"
+
+
+@pytest.mark.skipif(not os.path.exists("rust/nedb-cast-core/tests/fixtures.json"),
+                    reason="parity fixtures not generated")
+def test_parity_fixtures_are_usable():
+    """Fixtures must carry everything the Rust test asserts against."""
+    fx = json.load(open("rust/nedb-cast-core/tests/fixtures.json"))
+    items = fx.get("fixtures") or []
+    assert len(items) >= 10, f"expected >=10 fixtures, got {len(items)}"
+    for it in items:
+        for key in ("prompt", "input_ids", "prompt_logits", "gen_ids", "nql"):
+            assert key in it, f"fixture missing {key}"
+        assert len(it["prompt_logits"]) > 100, "logit vector implausibly short"
+        assert it["input_ids"], "empty input_ids"
+
+
+def test_gelu_uses_exact_erf_not_tanh():
+    """PyTorch's default F.gelu is the erf formulation. The tanh approximation is
+    ~500x less accurate and would sit at the parity tolerance, so the Rust port
+    must use erf. This test pins the reference so a future change is caught."""
+    import math
+    import torch
+    xs = torch.linspace(-8, 8, 2001)
+    ref = torch.nn.functional.gelu(xs)
+    tanh = 0.5 * xs * (1 + torch.tanh(math.sqrt(2 / math.pi) * (xs + 0.044715 * xs ** 3)))
+    err = (tanh - ref).abs().max().item()
+    assert err > 1e-4, (
+        "tanh approx is unexpectedly close to torch gelu; the Rust port's choice "
+        "of erf may no longer be load-bearing — re-verify rust/src/model.rs")

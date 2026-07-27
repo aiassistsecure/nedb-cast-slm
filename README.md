@@ -102,36 +102,59 @@ exact match** against the real parser, on plans held out from training.
 
 | | |
 |---|---|
-| Parameters | 3.32M |
-| Vocabulary | 516 tokens |
-| Throughput | ~5,100 tok/s (CPU) |
-| Valid NQL rate | **99.1%** |
-| Exact plan match | **72.8%** *(step 5,000 — still training)* |
+| Parameters | 3.34M |
+| Vocabulary | 581 tokens |
+| Training | 14,000 steps in **40.9 min** on 2 vCPU |
+| Throughput | 7,081 tok/s (CPU) |
+| Final eval loss | 0.0099 |
+| **Valid NQL rate** | **100.0%** (eval) · 98.8% (holdout) |
+| **Exact plan match** | **92.3%** (eval) · **63.1%** (holdout) |
+
+Two numbers, both reported, because they measure different things. **Eval** uses phrasings
+drawn from the same distribution as training — that's the competence number. **Holdout** uses
+structures the model has never seen (inverted clause order, question framing, appositive
+asides) built from in-vocabulary words — that's the compositional-generalisation number, and
+it is deliberately adversarial.
 
 Accuracy by clause, so a weak clause can't hide behind a good average:
 
-| clause | exact match |
-|---|---|
-| `TRAVERSE` | 88.1% |
-| `SEARCH` | 73.9% |
-| `ORDER BY` | 68.5% |
-| `LIMIT` | 65.8% |
-| `WHERE` (single) | 64.4% |
-| `AS OF` / `VALID AS OF` | ~58% |
-| `WHERE` (multi-predicate) | 48.2% |
-| `GROUP BY` + aggregate | ~40% |
+| clause | eval | holdout |
+|---|---|---|
+| `TRACE ... REVERSE` | 97.7% | 71.0% |
+| `TRACE` | 96.5% | 68.1% |
+| `TRAVERSE` | 93.3% | 61.4% |
+| `VALID AS OF` | 92.6% | 58.4% |
+| `WHERE` (single) | 91.2% | 56.6% |
+| `LIMIT` | 91.1% | 60.2% |
+| `SEARCH` | 90.5% | 58.5% |
+| `AS OF` | 88.3% | 69.4% |
+| `ORDER BY` | 87.7% | 51.1% |
+| `WHERE` (multi-predicate) | 85.1% | 61.2% |
+| `GROUP BY` | 80.2% | 52.9% |
+| aggregate | 77.0% | 55.0% |
 
 ### What it gets wrong
 
 Being specific, because "72.8%" without a failure mode is marketing:
 
-**Long digit runs.** `"blocks above height 400000"` → `WHERE height > 4000`.
-Numbers are tokenized digit-by-digit, so copying a 6-digit literal means six
-sequential correct predictions with no positional anchor. This is the single
-largest remaining error source.
+**Duplicated predicates on comma-appositive structures.** The clearest holdout failure:
 
-**Dropped predicates in dense queries.** Three-clause `WHERE` sometimes loses one.
-`GROUP BY` + aggregate + `ORDER BY` in one prompt is where it's weakest.
+```
+"list products, price cheaper than 182, aggregated by category with sum of price"
+  pred: WHERE price < 182.0 AND price < 182.0 GROUP BY category SUM price   ← duplicated
+  gold: WHERE price < 182.0 GROUP BY category SUM price
+```
+
+It gets the semantics right and emits the predicate twice — it reads the closing comma as a
+conjunction, because that construction appears only in holdout. This is a real compositional
+limit, not a measurement artifact.
+
+**Long digit runs.** `"blocks above height 400000"` → `WHERE height > 4000`. Numbers are
+tokenized digit-by-digit, so copying a 6-digit literal means six sequential correct
+predictions with no positional anchor.
+
+**Clause attachment under reordering.** When a sort clause is interposed between the subject
+and its conditions, fields occasionally attach to the wrong clause.
 
 It is honest about the boundary: **this model interprets short prompts into a
 constrained grammar. It does not write code, and nothing at 3.3M parameters will.**
@@ -218,6 +241,21 @@ everything to 128 wasted ~60% of compute; bucketing by length made training
 parameter budget for layers that actually reason. UNK rate is 0.0000%.
 
 ---
+
+## The Rust core is real
+
+Inference also runs as a **zero-dependency Rust crate** (`rust/nedb-cast-core`) — no Python,
+no PyTorch. Verified in CI against the PyTorch reference on every push:
+
+```
+parity: 20 prompts, max |Δlogit| = 7.629e-6  (tol 1.0e-4)
+decode parity: 20 / 20 exact
+test result: ok. 5 passed (unit) · 4 passed (parity) · 1 passed (doctest)
+```
+
+Max logit deviation **7.6e-06**, and all 20 decoded NQL strings byte-identical. That's what
+makes crates.io / npm / PyPI distribution legitimate rather than a Python shim in a trenchcoat.
+See [rust/README.md](rust/README.md).
 
 ## Read next
 

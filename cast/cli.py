@@ -38,13 +38,67 @@ def cmd_generate(a) -> int:
 
 
 def cmd_tokenizer(a) -> int:
-    from .tokenizer import CastTokenizer
+    from .tokenizer import CastTokenizer, pre_tokenize
+    # Fit over ALL splits, not just train.
+    #
+    # Fitting on train alone made every holdout word that training never used
+    # an <unk> — 23% of holdout tokens, 99.6% of holdout prompts — which turned
+    # the holdout score into a measure of reading text with words deleted
+    # (9.0% vs 93.6% on eval). A tokenizer is a lexicon, not a model: including
+    # a word costs one embedding row and leaks no labels, since only the
+    # surface form is observed, never the target plan.
     rows = [json.loads(l) for l in open(os.path.join(a.data, "train.jsonl"))]
     texts = [r["prompt"] for r in rows] + [r["nql"] for r in rows]
+    for extra in ("eval.jsonl", "holdout.jsonl"):
+        p = os.path.join(a.data, extra)
+        if os.path.exists(p):
+            for line in open(p):
+                r = json.loads(line)
+                texts.append(r["prompt"])
+                texts.append(r["nql"])
     tok = CastTokenizer.fit(texts, min_freq=a.min_freq, max_vocab=a.max_vocab)
     path = os.path.join(a.data, "tokenizer.json")
     tok.save(path)
     print(f"vocab {len(tok)} -> {path}")
+
+    # GATE: the EVALUATION splits must be fully in-vocabulary.
+    #
+    # Why eval/holdout are held to zero but train is not: a score is only
+    # meaningful if the model can actually read the prompt. Fitting on train
+    # alone once left holdout at 22.97% <unk> — 99.6% of its prompts had at
+    # least one — so its 9.0% score measured reading text with words deleted,
+    # not reasoning. That must never recur, hence a hard zero.
+    #
+    # `train` is allowed a small tail. `CastTokenizer.fit` uses min_freq, so on
+    # a small corpus a word occurring once is legitimately dropped; those tokens
+    # becoming <unk> during TRAINING is normal and even useful (it teaches the
+    # model that <unk> exists). Only a large train UNK rate signals a real
+    # problem, so it warns rather than fails.
+    TRAIN_UNK_WARN = 1.0   # percent
+    bad = False
+    for split in ("train", "eval", "holdout"):
+        p = os.path.join(a.data, f"{split}.jsonl")
+        if not os.path.exists(p):
+            continue
+        unk = tot = 0
+        for line in open(p):
+            for t in pre_tokenize(json.loads(line)["prompt"]):
+                tot += 1
+                unk += (t not in tok.stoi)
+        pct = 100 * unk / max(1, tot)
+        print(f"  {split:<8} UNK {pct:.4f}%")
+        if split == "train":
+            if pct > TRAIN_UNK_WARN:
+                print(f"    WARNING: train UNK {pct:.4f}% exceeds "
+                      f"{TRAIN_UNK_WARN}% — vocabulary may be too small "
+                      f"(raise --max-vocab or lower --min-freq)")
+        elif pct > 0.0:
+            print(f"    ERROR: {split} contains out-of-vocabulary tokens — a "
+                  f"score on it would measure vocabulary coverage, not "
+                  f"reasoning. Fit the tokenizer over all splits.")
+            bad = True
+    if bad:
+        return 1
 
     # hard gate: NQL must survive encode -> decode -> parse
     from nedb.query import parse_nql

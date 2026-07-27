@@ -14,5 +14,6 @@ runs/*/ckpt.pt
 runs_*.log
 *.pt
 
-# NEDB ledger (local; regenerate via the pipeline)
-ledger/
+# The NEDB ledger IS shipped — it is 4KB, portable, and lets anyone who clones
+# run `cast lineage` and verify provenance without training anything.
+# (deliberately NOT ignored)

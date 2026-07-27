@@ -1,0 +1,25 @@
+[package]
+name = "nedb-cast-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.70"
+description = "Pure-Rust inference for nedb-cast-slm — casts short prompts into NEDB query plans. Zero Python, zero PyTorch, zero dependencies."
+license = "BUSL-1.1"
+repository = "https://github.com/aiassistsecure/nedb-cast-slm"
+homepage = "https://interchained.org"
+keywords = ["nedb", "inference", "transformer", "slm", "nql"]
+categories = ["science", "database"]
+readme = "README.md"
+
+[dependencies]
+# Intentionally EMPTY. This is a 4-layer, 256-dim model; naive f32 matmul is
+# fast enough and an empty dependency tree is a feature, not a limitation.
+
+[dev-dependencies]
+# Parity fixtures are plain JSON parsed by a ~120-line hand-rolled reader in
+# tests/ so that `cargo test` also stays dependency-free.
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
