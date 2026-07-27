@@ -25,7 +25,7 @@
 
 use std::path::{Path, PathBuf};
 
-use nedb_cast_core::Cast;
+use nedb_cast_slm::Cast;
 
 mod json;
 use json::JsonValue;

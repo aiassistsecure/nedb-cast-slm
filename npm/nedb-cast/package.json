@@ -1,0 +1,26 @@
+{
+  "name": "nedb-cast-slm",
+  "version": "10.30.93",
+  "description": "A 3.3M-parameter language model that casts short prompts into NEDB query plans. Pure Rust core, no Python, no PyTorch.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "license": "BUSL-1.1",
+  "keywords": ["nedb", "nql", "slm", "small-language-model", "text-to-query", "inference", "rust", "napi"],
+  "repository": { "type": "git", "url": "git+https://github.com/aiassistsecure/nedb-cast-slm.git" },
+  "homepage": "https://interchained.org",
+  "engines": { "node": ">=16" },
+  "files": ["index.js", "index.d.ts", "weights.js", "README.md", "*.node"],
+  "napi": {
+    "name": "nedb-cast-slm",
+    "triples": {
+      "defaults": true,
+      "additional": ["aarch64-apple-darwin", "x86_64-unknown-linux-musl"]
+    }
+  },
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "test": "node test.js"
+  },
+  "devDependencies": { "@napi-rs/cli": "^2.18.0" }
+}
