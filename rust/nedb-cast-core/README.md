@@ -1,4 +1,4 @@
-# nedb-cast-core
+# nedb-cast-slm (Rust core)
 
 Pure-Rust inference for [**nedb-cast-slm**](https://github.com/aiassistsecure/nedb-cast-slm) —
 a 3.34M-parameter model that casts short English prompts into NEDB query plans (NQL).
@@ -6,7 +6,7 @@ a 3.34M-parameter model that casts short English prompts into NEDB query plans (
 **No Python. No PyTorch. No dependencies at all** — the `[dependencies]` table is empty.
 
 ```rust
-use nedb_cast_core::Cast;
+use nedb_cast_slm::Cast;
 
 let cast = Cast::load("model.cast")?;
 let nql  = cast.cast("top 5 stylists in winter park");

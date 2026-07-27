@@ -1,4 +1,4 @@
-//! Node.js bindings for `nedb-cast-core`.
+//! Node.js bindings for `nedb-cast-slm`.
 //!
 //! The core is pure Rust with zero dependencies, so this wrapper is thin by
 //! design: it forwards to the same code the Rust crate and the CI parity test
@@ -17,7 +17,7 @@
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
-use nedb_cast_core::Cast as CoreCast;
+use nedb_cast_slm::Cast as CoreCast;
 
 #[napi]
 pub struct Cast {

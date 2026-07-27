@@ -17,9 +17,9 @@ function loadNative() {
   // fall back to the per-platform packages napi publishes alongside
   const { platform, arch } = process;
   const candidates = [
-    `@interchained/cast-${platform}-${arch}`,
-    `@interchained/cast-${platform}-${arch}-gnu`,
-    `@interchained/cast-${platform}-${arch}-msvc`,
+    `nedb-cast-slm-${platform}-${arch}`,
+    `nedb-cast-slm-${platform}-${arch}-gnu`,
+    `nedb-cast-slm-${platform}-${arch}-msvc`,
   ];
   for (const c of candidates) {
     try { return require(c); } catch (_) { /* try next */ }

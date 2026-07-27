@@ -1,5 +1,5 @@
 /**
- * @interchained/cast — cast short prompts into NEDB query plans.
+ * nedb-cast-slm — cast short prompts into NEDB query plans.
  *
  * The heavy lifting is a zero-dependency Rust core (`nedb-cast-core`) held to
  * numerical parity with the PyTorch reference in CI: max |delta logit| 7.629e-6

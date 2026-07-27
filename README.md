@@ -168,8 +168,8 @@ agree by construction rather than by luck.
 
 ```bash
 pip install "nedb-cast-slm[torch]"     # Python: inference + training
-cargo add nedb-cast-core               # Rust:   zero dependencies, no Python
-npm install @interchained/cast         # Node:   napi binding over the Rust core
+cargo add nedb-cast-slm               # Rust:   zero dependencies, no Python
+npm install nedb-cast-slm         # Node:   napi binding over the Rust core
 ```
 
 `pip install nedb-cast-slm` without the extra gives you the CLI and the NQL parser

@@ -1,10 +1,10 @@
-# @interchained/cast
+# nedb-cast-slm
 
 **A 3.34M-parameter language model that turns a sentence into a database query.**
 Pure Rust core. No Python, no PyTorch, no runtime dependencies.
 
 ```js
-const { pretrained } = require('@interchained/cast');
+const { pretrained } = require('nedb-cast-slm');
 
 const cast = await pretrained();          // fetches + verifies weights once
 cast.cast('top 5 stylists in winter park');
