@@ -51,6 +51,37 @@ tanh approximation:     max abs err 4.735e-04   ← 497x worse, at the tolerance
 
 If you touch `gelu()` in `src/model.rs`, re-run the comparison.
 
+## It ships inside NEDB
+
+As of **nedb-engine v2.8.0** this crate is a feature of the database daemon itself:
+
+```bash
+cargo install nedb-engine --features cast
+nedbd --dag --cast ./data
+
+curl -X POST localhost:7070/v1/databases/shop/cast -d '{"prompt":"orders over 100"}'
+# {"nql":"FROM orders WHERE total > 100","valid":true,"collection_known":true}
+```
+
+The engine wraps `Cast` in a `Caster` that also checks the generated plan against the
+collections the database actually has — a plan naming a collection that does not exist
+returns 422 with the reason, never an empty result set. That check is the reason the
+planner belongs in the engine: schema knowledge is free there and stale everywhere else.
+
+`nedb-engine` depends on this crate optionally (`cast = ["dep:nedb-cast-slm"]`), so a
+default build pulls none of it. And since this crate has an empty dependency tree, the
+feature adds exactly one crate to the graph.
+
+```rust
+use nedb_engine::cast::Caster;
+
+let caster = Caster::load(&data_dir)?;
+let out = caster.cast_checked("orders over 100", &db.id_index.collections());
+if out.collection_known && nedb_engine::nql::parse(&out.nql).is_ok() {
+    let (rows, count) = nedb_engine::nql::query(&db, &out.nql)?;
+}
+```
+
 ## Weights
 
 Weights ship as GitHub **release assets**, not in the crate. Download `model.cast` from
@@ -60,8 +91,8 @@ languages load byte-identical weights.
 
 ## Docs
 
-Full format spec, architecture notes, and the development lore (four bugs, none of which
-were in the model) live in the [repository](https://github.com/aiassistsecure/nedb-cast-slm):
+Full format spec, architecture notes, and the development lore (five bugs, not one of which
+was in the model) live in the [repository](https://github.com/aiassistsecure/nedb-cast-slm):
 `rust/README.md`, `docs/ARCHITECTURE.md`, `docs/LORE.md`.
 
 ## License

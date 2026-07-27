@@ -298,9 +298,82 @@ fake ones were cleared away.
 
 ---
 
+## VI. The bug that was in the database
+
+*Added after shipping — because the pattern held one more time, in another
+codebase entirely.*
+
+The model got embedded into NEDB itself as a `/cast` endpoint. A test script
+seeded three orders and immediately cast a prompt against them. The response:
+
+```json
+{"error": "collection \"orders\" does not exist",
+ "collections": []}
+```
+
+On a database that, in the same run, answered `FROM orders` with **all three
+rows**.
+
+Two contradictory facts in one output. The rows exist; the collection holding
+them does not. Something had to be lying.
+
+Typing the same two commands by hand worked perfectly. Every time. That is the
+detail that mattered — a bug that a human cannot reproduce but a script hits
+reliably is a bug with a **clock** in it.
+
+```rust
+pub fn collections(&self) -> Vec<String> {
+    fs::read_dir(&self.root)   // directories on disk
+```
+
+NEDB buffers writes in a WAL and flushes on a 1-second ticker. Every read path
+overlays that buffer before falling back to disk — the struct's own doc comment
+says so: *"Read path: `write_buf` checked first, then disk."* `get()` honors it.
+`list_ids()` honors it. `collections()` listed directories and nothing else.
+
+So for up to one second after a successful write, a brand-new collection had no
+directory yet and did not exist as far as this one function was concerned. A
+human typing curl commands never sees that window; the ticker fires between
+keystrokes. Only a caller that writes and reads inside the same millisecond does.
+
+The same defect sat inside `compact()`, which enumerates collections to decide
+which objects are live. A collection missed there has its **current** documents
+treated as garbage and reclaimed. Nobody had hit it, because compaction flushes
+first and the window is narrow. It was data loss waiting for a scheduler.
+
+### The part worth remembering
+
+The endpoint's own test suite already asserted this:
+
+```rust
+let collections = db.id_index.collections();
+assert!(collections.contains(&"orders".to_string()));
+```
+
+It passed. Every run. Because the helper that built the test database did this:
+
+```rust
+db.flush_all();     // convenience
+```
+
+One line, added without thinking, to make the fixture tidy. It forced the
+directory into existence and made the assertion meaningless. **The test helper
+was concealing the exact bug the test was written to catch.**
+
+The fix is three lines of WAL overlay. The regression test is the interesting
+part — it seeds *without* flushing, and carries a comment telling the next person
+not to tidy one in:
+
+> Do not "tidy" a `flush_all()` into this test. It would still pass, and it would
+> stop testing anything.
+
+A fifth bug, in a fourth codebase, and still not in the model.
+
+---
+
 ## Postscript: the pattern
 
-Four bugs. Not one lived in the model.
+Five bugs. Not one lived in the model.
 
 | bug | lived in | looked like |
 |---|---|---|
@@ -308,6 +381,7 @@ Four bugs. Not one lived in the model.
 | non-deterministic dataset id | `list(set(...))` | working correctly |
 | 76% tokenizer ceiling | 40 lines of string handling | a model that plateaued |
 | 55-point accuracy loss | the evaluator's padding | a capacity limit |
+| `/cast` 422 on a live collection | the database's WAL overlay | a model naming the wrong collection |
 
 The model was the only component that never misbehaved. Everything around it did.
 
@@ -318,6 +392,16 @@ and trusted forever.
 
 **In a machine learning project, the plumbing is where the bugs live, and they
 disguise themselves as model failures.**
+
+The fifth one extends the rule past this repository. `/cast` returning "collection
+does not exist" looks *exactly* like the documented weakness — a model naming a
+plausible-but-absent collection on an unfamiliar schema. The diagnosis was sitting
+right there, pre-written, in our own model card. It was wrong. The database was
+wrong.
+
+**A known weakness is the best possible camouflage for an unrelated bug.** When a
+failure matches your documented limitation on the first read, that is the moment
+to look hardest, not the moment to stop looking.
 
 The round-trip gate is the durable defense. Every generated example must parse
 through the real engine parser back to a canonically identical plan, or the build

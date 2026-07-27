@@ -1,10 +1,13 @@
-# nedb-cast-core
+# nedb-cast-slm (Rust core)
+
+*The crate is published as `nedb-cast-slm`; the directory keeps the older
+`nedb-cast-core` name, which is why paths below still say so.*
 
 Pure-Rust inference for **nedb-cast-slm**. No Python, no PyTorch, **no dependencies at all** —
 the `[dependencies]` table is empty and stays that way.
 
 ```rust
-use nedb_cast_core::Cast;
+use nedb_cast_slm::Cast;
 
 let cast = Cast::load("model.cast")?;
 let nql  = cast.cast("top 5 stylists in winter park");
