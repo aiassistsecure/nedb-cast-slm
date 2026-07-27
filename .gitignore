@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# generated corpus — reproducible from `cast generate --seed 1337`
+data/*.jsonl
+data/manifest.json
+
+# training artifacts
+runs/*/ckpt.pt
+runs_*.log
+*.pt
+
+# NEDB ledger (local; regenerate via the pipeline)
+ledger/
