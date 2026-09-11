@@ -37,6 +37,42 @@ def cmd_generate(a) -> int:
     return 0
 
 
+def cmd_forge(a) -> int:
+    """Teacher-written prompts, kept only when they round-trip.
+
+    `generate` builds prompts from hand-written templates, which is the quality
+    ceiling cast.paraphrase names in its own first paragraph. This asks a large
+    model for the English instead, then discards every prompt the model cannot
+    itself turn back into the same plan.
+    """
+    from pathlib import Path
+
+    from .forge import TeacherCfg, forge
+
+    cfg = TeacherCfg(
+        endpoint=a.endpoint,
+        model=a.teacher_model,
+        max_tokens=a.max_tokens,
+        api_key=os.environ.get("CAST_TEACHER_KEY"),
+    )
+    out = Path(a.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    st = forge(
+        n_plans=a.plans,
+        variants=a.variants,
+        seed=a.seed,
+        cfg=cfg,
+        out_path=out,
+        workers=a.workers,
+    )
+    # Non-zero when nothing survived: a corpus of zero rows is a failed run,
+    # and exiting 0 would let a pipeline carry on as if it had data.
+    if st.verified == 0:
+        print("forge produced NO verified rows — see the counts above", file=sys.stderr)
+        return 1
+    return 0
+
+
 def cmd_tokenizer(a) -> int:
     from .tokenizer import CastTokenizer, pre_tokenize
     # Fit over ALL splits, not just train.
@@ -283,6 +319,21 @@ def main(argv=None) -> int:
     g.add_argument("--holdout", type=int, default=2_000)
     g.add_argument("--seed", type=int, default=1337)
     g.set_defaults(fn=cmd_generate)
+
+    fo = sub.add_parser(
+        "forge", help="teacher-written prompts, round-trip verified (needs a served teacher)"
+    )
+    fo.add_argument("--plans", type=int, default=200, help="distinct plans to paraphrase")
+    fo.add_argument("--variants", type=int, default=8, help="prompts requested per plan")
+    fo.add_argument("--seed", type=int, default=1337)
+    fo.add_argument("--workers", type=int, default=4, help="concurrent teacher requests")
+    fo.add_argument("--endpoint", default="http://127.0.0.1:11434",
+                    help="OpenAI-compatible base URL")
+    fo.add_argument("--teacher-model", dest="teacher_model", default="glm-5.3-flash")
+    fo.add_argument("--max-tokens", dest="max_tokens", type=int, default=3000,
+                    help="TOTAL budget: a thinking model spends most of it before the answer")
+    fo.add_argument("--out", default="data/forged.jsonl")
+    fo.set_defaults(fn=cmd_forge)
 
     t = sub.add_parser("tokenizer", help="fit the vocab")
     t.add_argument("--min-freq", dest="min_freq", type=int, default=2)
